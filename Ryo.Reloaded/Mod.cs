@@ -14,6 +14,7 @@ using Ryo.Reloaded.Template;
 using SharedScans.Interfaces;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using Reloaded.Hooks.ReloadedII.Interfaces;
 using Ryo.Reloaded.CRI;
 using Ryo.Reloaded.CRI.CriWare;
 
@@ -24,6 +25,7 @@ public unsafe class Mod : ModBase, IExports
     public const string NAME = "Ryo";
 
     private readonly IModLoader modLoader;
+    private readonly IReloadedHooks reloadedHooks;
     private readonly ILogger log;
     private readonly IMod owner;
 
@@ -53,6 +55,7 @@ public unsafe class Mod : ModBase, IExports
         this.owner = context.Owner;
         this.config = context.Configuration;
         this.modConfig = context.ModConfig;
+        this.reloadedHooks = context.Hooks!;
 
 #if DEBUG
         Debugger.Launch();
@@ -65,8 +68,8 @@ public unsafe class Mod : ModBase, IExports
         Log.Debug($"Game: {game}");
 
         this.modLoader.GetController<ISharedScans>().TryGetTarget(out var scans);
-
-        this.criAtomEx = new(this.game, scans!);
+        
+        this.criAtomEx = new(this.game, scans!, this.reloadedHooks);
         this.modLoader.AddOrReplaceController<ICriAtomEx>(this.owner, this.criAtomEx);
 
         this.criAtomRegistry = new();
