@@ -46,7 +46,9 @@ internal unsafe class CriAtomEx : ICriAtomEx
     private readonly WrapperContainer<criAtomExCategory_GetVolume> getCategoryVolume;
     private readonly WrapperContainer<criAtomExCategory_GetVolumeById> getVolumeById;
     private readonly WrapperContainer<criAtomExCategory_SetVolume> setVolumeByIndex;
-    private criAtomExPlayer_SetFormat?[] setFormat;
+    private criAtomExPlayer_SetFormat? setFormat;
+    private readonly object setFormatLock = new();
+    private int setFormatSignaturesScanned;
     private readonly WrapperContainer<criAtomExPlayer_SetSamplingRate> setSamplingRate;
     private readonly WrapperContainer<criAtomExPlayer_SetNumChannels> setNumChannels;
     private readonly WrapperContainer<criAtomExPlayer_SetVolume> setVolume;
@@ -137,16 +139,38 @@ internal unsafe class CriAtomEx : ICriAtomEx
         scans.AddScan<criAtomExPlayer_GetNumPlayedSamples>(this.patterns.criAtomExPlayer_GetNumPlayedSamples);
         this.getNumPlayedSamples = scans.CreateWrapper<criAtomExPlayer_GetNumPlayedSamples>(Mod.NAME);
         
-        this.setFormat = GC.AllocateArray<criAtomExPlayer_SetFormat>(this.patterns.criAtomExPlayer_SetFormat.Length);
         foreach (var (Index, Candidate) in this.patterns.criAtomExPlayer_SetFormat.Select((x, i) => (i, x)))
         {
+            Project.Scans.AddScanHook($"criAtomExPlayer_SetFormat[{Index}]", Candidate, (result, hooks) =>
+            {
+                lock (setFormatLock)
+                {
+                    setFormatSignaturesScanned++;
+                    this.setFormat = hooks.CreateWrapper<criAtomExPlayer_SetFormat>(result, out _);
+                }
+            }, () =>
+            {
+                lock (setFormatLock)
+                {
+                    setFormatSignaturesScanned++;
+                    if (setFormatSignaturesScanned == this.patterns.criAtomExPlayer_SetFormat.Length)
+                    {
+                        Log.Error($"Failed to find a pattern for criAtomExPlayer_SetFormat.");
+                    }
+                    else
+                    {
+                        Log.Debug($"No matching pattern for criAtomExPlayer_SetFormat[{Index}].");
+                    }
+                }    
+            });
+            /*
             var ListenerId = $"criAtomExPlayer_SetFormat_{Index}";
             scans.AddScan(ListenerId, Candidate);
             scans.CreateListener(ListenerId, x =>
             {
                 this.setFormat[Index] = this.reloadedHooks.CreateWrapper<criAtomExPlayer_SetFormat>(x, out _);
             });
-            
+            */
         }
 
         scans.AddScan<criAtomExPlayer_SetSamplingRate>(this.patterns.criAtomExPlayer_SetSamplingRate);
@@ -225,10 +249,7 @@ internal unsafe class CriAtomEx : ICriAtomEx
 
     public void Player_SetAisacControlByName(nint playerHn, byte* controlName, float controlValue)  => this.setAisacControlByName.Wrapper(playerHn, controlName, controlValue);
 
-    public void Player_SetCueId(nint playerHn, nint acbHn, int cueId)
-    {
-        // this.setCueId_Normal
-    }
+    public void Player_SetCueId(nint playerHn, nint acbHn, int cueId) => this.setCueId.Wrapper(playerHn, acbHn, cueId);
 
     public void Player_SetCueName(nint playerHn, nint acbHn, byte* cueName)  => this.setCueName.Wrapper(playerHn, acbHn, cueName);
 
@@ -242,18 +263,7 @@ internal unsafe class CriAtomEx : ICriAtomEx
 
     public void Player_SetFile(nint playerHn, nint criBinderHn, byte* path) => this.setFile.Wrapper(playerHn, criBinderHn, path);
 
-    public void Player_SetFormat(nint playerHn, CriAtomFormat format)
-    {
-        foreach (var Candidate in this.setFormat)
-        {
-            if (Candidate != null)
-            {
-                Candidate(playerHn, format);
-                return;
-            }
-        }
-        Log.Error("No valid function available for Player_SetFormat!");
-    }
+    public void Player_SetFormat(nint playerHn, CriAtomFormat format) => this.setFormat!(playerHn, format);
 
     public void Player_SetNumChannels(nint playerHn, int numChannels) => this.setNumChannels.Wrapper(playerHn, numChannels);
 
