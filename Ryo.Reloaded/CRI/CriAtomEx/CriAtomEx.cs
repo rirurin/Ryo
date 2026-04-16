@@ -146,7 +146,11 @@ internal unsafe class CriAtomEx : ICriAtomEx
                 lock (setFormatLock)
                 {
                     setFormatSignaturesScanned++;
-                    this.setFormat = hooks.CreateWrapper<criAtomExPlayer_SetFormat>(result, out _);
+                    if (this.setFormat == null)
+                    {
+                        scans.Broadcast<criAtomExPlayer_SetFormat>(result);
+                    }
+                    this.setFormat ??= hooks.CreateWrapper<criAtomExPlayer_SetFormat>(result, out _);
                 }
             }, () =>
             {
