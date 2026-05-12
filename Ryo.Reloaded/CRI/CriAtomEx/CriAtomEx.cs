@@ -5,6 +5,7 @@ using Ryo.Definitions.Structs;
 using Ryo.Definitions.Classes;
 using static Ryo.Definitions.Functions.CriAtomExFunctions;
 using Ryo.Definitions.Enums;
+using Ryo.Reloaded.Common;
 using SharedScans.Interfaces;
 
 namespace Ryo.Reloaded.CRI.CriAtomEx;
@@ -46,9 +47,7 @@ internal unsafe class CriAtomEx : ICriAtomEx
     private readonly WrapperContainer<criAtomExCategory_GetVolume> getCategoryVolume;
     private readonly WrapperContainer<criAtomExCategory_GetVolumeById> getVolumeById;
     private readonly WrapperContainer<criAtomExCategory_SetVolume> setVolumeByIndex;
-    private criAtomExPlayer_SetFormat? setFormat;
-    private readonly object setFormatLock = new();
-    private int setFormatSignaturesScanned;
+    private readonly MultiSignature<criAtomExPlayer_SetFormat> setFormat;
     private readonly WrapperContainer<criAtomExPlayer_SetSamplingRate> setSamplingRate;
     private readonly WrapperContainer<criAtomExPlayer_SetNumChannels> setNumChannels;
     private readonly WrapperContainer<criAtomExPlayer_SetVolume> setVolume;
@@ -138,44 +137,8 @@ internal unsafe class CriAtomEx : ICriAtomEx
 
         scans.AddScan<criAtomExPlayer_GetNumPlayedSamples>(this.patterns.criAtomExPlayer_GetNumPlayedSamples);
         this.getNumPlayedSamples = scans.CreateWrapper<criAtomExPlayer_GetNumPlayedSamples>(Mod.NAME);
-        
-        foreach (var (Index, Candidate) in this.patterns.criAtomExPlayer_SetFormat.Select((x, i) => (i, x)))
-        {
-            Project.Scans.AddScanHook($"criAtomExPlayer_SetFormat[{Index}]", Candidate, (result, hooks) =>
-            {
-                lock (setFormatLock)
-                {
-                    setFormatSignaturesScanned++;
-                    if (this.setFormat == null)
-                    {
-                        scans.Broadcast<criAtomExPlayer_SetFormat>(result);
-                    }
-                    this.setFormat ??= hooks.CreateWrapper<criAtomExPlayer_SetFormat>(result, out _);
-                }
-            }, () =>
-            {
-                lock (setFormatLock)
-                {
-                    setFormatSignaturesScanned++;
-                    if (setFormatSignaturesScanned == this.patterns.criAtomExPlayer_SetFormat.Length)
-                    {
-                        Log.Error($"Failed to find a pattern for criAtomExPlayer_SetFormat.");
-                    }
-                    else
-                    {
-                        Log.Debug($"No matching pattern for criAtomExPlayer_SetFormat[{Index}].");
-                    }
-                }    
-            });
-            /*
-            var ListenerId = $"criAtomExPlayer_SetFormat_{Index}";
-            scans.AddScan(ListenerId, Candidate);
-            scans.CreateListener(ListenerId, x =>
-            {
-                this.setFormat[Index] = this.reloadedHooks.CreateWrapper<criAtomExPlayer_SetFormat>(x, out _);
-            });
-            */
-        }
+
+        this.setFormat = new(scans, this.patterns.criAtomExPlayer_SetFormat);
 
         scans.AddScan<criAtomExPlayer_SetSamplingRate>(this.patterns.criAtomExPlayer_SetSamplingRate);
         this.setSamplingRate = scans.CreateWrapper<criAtomExPlayer_SetSamplingRate>(Mod.NAME);
@@ -267,7 +230,7 @@ internal unsafe class CriAtomEx : ICriAtomEx
 
     public void Player_SetFile(nint playerHn, nint criBinderHn, byte* path) => this.setFile.Wrapper(playerHn, criBinderHn, path);
 
-    public void Player_SetFormat(nint playerHn, CriAtomFormat format) => this.setFormat!(playerHn, format);
+    public void Player_SetFormat(nint playerHn, CriAtomFormat format) => this.setFormat.Function.Wrapper(playerHn, format);
 
     public void Player_SetNumChannels(nint playerHn, int numChannels) => this.setNumChannels.Wrapper(playerHn, numChannels);
 
